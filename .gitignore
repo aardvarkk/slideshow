@@ -1,0 +1,10 @@
+Debug
+Release
+*.ilk
+*.pdb
+bin/*.exe
+ipch
+*.opensdf
+*.sdf
+*.suo
+*.user
