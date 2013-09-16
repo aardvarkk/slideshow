@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <iostream>
 #include <sstream>
 #include <vector>
 
@@ -32,15 +33,37 @@ Strings GetFilenames(std::string const& dir, std::string const& ext)
   return filenames;
 }
 
+std::string ExecuteCommand(std::string const& cmd)
+{
+  system((cmd + " >out.txt 2>&1").c_str());
+  return std::string();
+}
+
 int main(int argc, char* argv[])
 {
+  // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
+  Strings pictures = GetFilenames("C:\\Users\\Public\\Pictures\\Sample Pictures", "jpg");
+  Strings songs    = GetFilenames("C:\\Users\\clarkson\\Desktop\\slideshow\\bin", "mp3");
+  
+  std::stringstream cmd;
+  cmd << "ffmpeg -y -i \"concat:";
+  for (size_t i = 0; i < songs.size(); ++i) {
+    if (i > 0) cmd << "|";
+    cmd << songs[i];
+  }
+  cmd << "\" output.wav";
+  ExecuteCommand(cmd.str());
+  //std::cout << res.str() << std::endl;
+
+  // Get music duration
+  double duration = 0;
+  ExecuteCommand("ffprobe output.wav");
+
   Magick::InitializeMagick(*argv);
   
-  Strings filenames = GetFilenames("C:\\Users\\Public\\Pictures\\Sample Pictures", "jpg");
-  
-  for (size_t i = 0; i < filenames.size(); ++i) {
+  for (size_t i = 0; i < pictures.size(); ++i) {
     Magick::Image img;
-    img.read(filenames[i]);
+    img.read(pictures[i]);
 
     char filename[0xFF];
     sprintf(filename, kFormat, i);
