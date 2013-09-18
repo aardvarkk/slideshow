@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -36,7 +37,40 @@ Strings GetFilenames(std::string const& dir, std::string const& ext)
 std::string ExecuteCommand(std::string const& cmd)
 {
   system((cmd + " >out.txt 2>&1").c_str());
-  return std::string();
+  std::ifstream file("out.txt");
+  std::stringstream buffer;
+  if (file)
+  {
+    buffer << file.rdbuf();
+    file.close();
+  }
+  return buffer.str();
+}
+
+void GetDuration(double& duration)
+{
+  // Get music duration
+  duration = 0;
+  // Sample: Duration: 00:11:57.93
+  std::string duration_str = ExecuteCommand("ffprobe output.wav");
+  std::string search_str = "Duration:";
+  int pos = duration_str.find(search_str);
+  if (pos == std::string::npos) {
+    return;
+  }
+  int h, m, s, fs;
+  {
+    std::stringstream ss;
+    ss.str(duration_str.substr(pos + search_str.length()));
+    ss >> h;
+    ss.ignore();
+    ss >> m;
+    ss.ignore();
+    ss >> s;
+    ss.ignore();
+    ss >> fs;
+  }
+  duration = h * 3600 + m * 60 + s + static_cast<double>(fs) / 100;
 }
 
 int main(int argc, char* argv[])
@@ -55,9 +89,13 @@ int main(int argc, char* argv[])
   ExecuteCommand(cmd.str());
   //std::cout << res.str() << std::endl;
 
-  // Get music duration
-  double duration = 0;
-  ExecuteCommand("ffprobe output.wav");
+  // Get the duration of the music
+  double duration;
+  GetDuration(duration);
+  if (duration == 0) {
+    std::cerr << "Unable to determine duration of music" << std::endl;
+    return EXIT_FAILURE;
+  }
 
   Magick::InitializeMagick(*argv);
   
