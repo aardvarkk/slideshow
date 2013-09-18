@@ -8,13 +8,13 @@
 #include <Windows.h>
 #endif
 
-#include <Magick++.h>
+#include <opencv2/opencv.hpp>
 
 static const int kFrameRate = 24;
 static const char* kFormat = "%08d.png";
 
 typedef std::vector<std::string> Strings;
-typedef std::list<Magick::Image> ImageList;
+typedef std::vector<cv::Mat>     Images;
 
 Strings GetFilenames(std::string const& dir, std::string const& ext)
 {
@@ -73,12 +73,8 @@ void GetDuration(double& duration)
   duration = h * 3600 + m * 60 + s + static_cast<double>(fs) / 100;
 }
 
-int main(int argc, char* argv[])
+void ConcatenateMusic(Strings const& songs)
 {
-  // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
-  Strings pictures = GetFilenames("C:\\Users\\Public\\Pictures\\Sample Pictures", "jpg");
-  Strings songs    = GetFilenames("C:\\Users\\clarkson\\Desktop\\slideshow\\bin", "mp3");
-  
   std::stringstream cmd;
   cmd << "ffmpeg -y -i \"concat:";
   for (size_t i = 0; i < songs.size(); ++i) {
@@ -87,7 +83,16 @@ int main(int argc, char* argv[])
   }
   cmd << "\" output.wav";
   ExecuteCommand(cmd.str());
-  //std::cout << res.str() << std::endl;
+}
+
+int main(int argc, char* argv[])
+{
+  // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
+  Strings pictures = GetFilenames("C:\\Users\\Public\\Pictures\\Sample Pictures", "jpg");
+  Strings songs    = GetFilenames("C:\\Users\\clarkson\\Desktop\\slideshow\\bin", "mp3");
+  
+  // Stitch the music together into a WAV file (to help determine actual length)
+  ConcatenateMusic(songs);
 
   // Get the duration of the music
   double duration;
@@ -97,19 +102,18 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
-  Magick::InitializeMagick(*argv);
-  
+  Images images(pictures.size());
   for (size_t i = 0; i < pictures.size(); ++i) {
-    Magick::Image img;
-    img.read(pictures[i]);
+    images[i] = cv::imread(pictures[i]);
 
     char filename[0xFF];
     sprintf(filename, kFormat, i);
-    img.write(filename);
+
+    cv::imwrite(filename, images[i]);
   }
     
   std::stringstream ss;
-  ss << "ffmpeg" 
+  ss << "ffmpeg -y" 
     << " -i " << kFormat
     << " -r " << kFrameRate 
     << " -c:v libx264"
