@@ -10,8 +10,9 @@
 
 #include <opencv2/opencv.hpp>
 
-static const int kFrameRate = 24;
-static const char* kFormat = "%08d.png";
+static const int    kFrameRate = 24;
+static const double kTransitionTime = 1;
+static const char*  kFormat = "frames/%08d.png";
 
 typedef std::vector<std::string> Strings;
 typedef std::vector<cv::Mat>     Images;
@@ -102,14 +103,21 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
+  // We know the framerate, so convert the duration into a number of frames
+  int frames = static_cast<int>(duration * kFrameRate + 0.5);
+  int frames_per_pic = frames / pictures.size();
+
   Images images(pictures.size());
-  for (size_t i = 0; i < pictures.size(); ++i) {
+  for (size_t i = 1; i < pictures.size(); ++i) {
     images[i] = cv::imread(pictures[i]);
 
     char filename[0xFF];
     sprintf(filename, kFormat, i);
 
-    cv::imwrite(filename, images[i]);
+    cv::imwrite(
+      filename, 
+      images[i] * 0.5 + images[i-1] * 0.5
+    );
   }
     
   std::stringstream ss;

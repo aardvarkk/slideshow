@@ -2,7 +2,7 @@ Debug
 Release
 *.ilk
 *.pdb
-bin/*.exe
+bin
 ipch
 *.opensdf
 *.sdf
