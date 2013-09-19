@@ -32,6 +32,8 @@ struct LayoutEntry
   cv::Mat img;
   int dim;
   int pos;
+  cv::Rect_<double> start_r;
+  cv::Rect_<double> end_r;
 };
 
 typedef std::deque<LayoutEntry> Layout;
@@ -115,19 +117,19 @@ void WriteFrame(cv::Mat const& img, int num)
   );
 }
 
-cv::Rect RandRect(cv::Mat const& img, double aspect, int min_dim)
+cv::Rect RandRect(cv::Mat const& img, int max_w, int max_h, int min_dim)
 {
   int x, y, w, h;
   bool valid = false;
 
-  std::tr1::uniform_int<> min_d(min_dim, std::min(img.rows, img.cols) - 1);
+  std::tr1::uniform_real<> min_d(min_dim, std::min(img.rows, img.cols) - 1);
     
-  if (aspect > 1) {
+  if (max_w > max_h) {
     h = min_d(eng_);
-    w = static_cast<int>(h * aspect + 0.5);
+    w = h * max_h / max_w;
   } else {
     w = min_d(eng_);
-    h = static_cast<int>(w * aspect + 0.5);
+    h = w * max_w / max_h;
   }
 
   std::tr1::uniform_int<> rnd_x(0, img.cols - w);
@@ -139,13 +141,13 @@ cv::Rect RandRect(cv::Mat const& img, double aspect, int min_dim)
   return cv::Rect(x, y, w, h);
 }
 
-cv::Rect LinearInterpRect(cv::Rect const& start, cv::Rect const& end, int frame, int total)
+cv::Rect_<double> LinearInterpRect(cv::Rect const& start, cv::Rect const& end, double alpha)
 {
-  cv::Rect ret = start;
-  ret.x += (end.x - start.x) * frame / total;
-  ret.y += (end.y - start.y) * frame / total;
-  ret.width += (end.width - start.width) * frame / total;
-  ret.height += (end.height - start.height) * frame / total;
+  cv::Rect_<double> ret = start;
+  ret.x += (end.x - start.x) * alpha;
+  ret.y += (end.y - start.y) * alpha;
+  ret.width  += (end.width - start.width)   * alpha;
+  ret.height += (end.height - start.height) * alpha;
   return ret;
 }
 
@@ -192,10 +194,10 @@ int main(int argc, char* argv[])
 {
   // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
   Strings pictures = GetFilenames("pictures_quick", "jpg");
-  Strings songs    = GetFilenames("music", "mp3");
+  Strings songs    = GetFilenames("music_quick", "mp3");
   
   // Stitch the music together into a WAV file (to help determine actual length)
-  //ConcatenateMusic(songs);
+  ConcatenateMusic(songs);
 
   // Get the duration of the music
   double duration;
@@ -244,10 +246,14 @@ int main(int argc, char* argv[])
           if (layout[j].path.empty()) {
             layout[j].img = cv::Mat(kOutputH, kOutputW, CV_8UC3);
             layout[j].img.setTo(0);
+            layout[j].start_r = cv::Rect_<double>(0, 0, kOutputW, kOutputH);
+            layout[j].end_r = cv::Rect_<double>(0, 0, kOutputW, kOutputH);
           } 
           // A normal image
           else {
             layout[j].img = cv::imread(layout[j].path);
+            layout[j].start_r = RandRect(layout[j].img, layout[j].img.rows, layout[j].img.cols, static_cast<int>(std::min(layout[j].img.rows, layout[j].img.cols) * kMinScale));
+            layout[j].end_r = RandRect(layout[j].img, layout[j].img.rows, layout[j].img.cols, static_cast<int>(std::min(layout[j].img.rows, layout[j].img.cols) * kMinScale));
           }
         }
 
@@ -256,13 +262,27 @@ int main(int argc, char* argv[])
         int start_layout_px = std::max(0, cur_pos - layout[j].pos);
         int end_layout_px   = start_layout_px + (end_comp_px - start_comp_px);
         
-        layout[j].img(cv::Rect(start_layout_px, 0, end_layout_px - start_layout_px + 1, kOutputH - 1)).copyTo(
+        // Interpolate the cropping area
+        cv::Rect_<double> src_r = LinearInterpRect(
+          layout[j].start_r, 
+          layout[j].end_r,
+          1 - static_cast<double>(end_layout_px - start_layout_px + 1) / kMaxOutputDim
+          );
+
+        cv::Mat cropped = layout[j].img(src_r);
+        double scale = kOutputW > kOutputH ? static_cast<double>(kOutputH) / cropped.rows : 0;
+        cv::resize(cropped, cropped, cv::Size(), scale, scale);
+
+        std::cout << "Cropping an image of dimension " << cropped.cols << "x" << cropped.rows << " at (" << start_layout_px << ", " << 0 << ", " << end_layout_px - start_layout_px + 1 << ", " << kOutputH - 1 << ")" << std::endl;
+        cropped(cv::Rect(start_layout_px, 0, end_layout_px - start_layout_px + 1, kOutputH - 1)).copyTo(
           comp(cv::Rect(start_comp_px, 0, end_comp_px - start_comp_px + 1, kOutputH - 1)));
       }
     }
 
     // Write it out
     WriteFrame(comp, i);
+
+    std::cout << "Wrote frame " << i+1 << " of " << frames << std::endl;
   }
 
   //std::stringstream ss;
