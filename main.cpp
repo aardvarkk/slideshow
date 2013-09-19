@@ -21,6 +21,8 @@ static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
 static const double kMinScale = 0.8;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
 
+//#define MAKE_FRAMES
+
 static std::tr1::mt19937 eng_;
 
 typedef std::vector<std::string> Strings;
@@ -214,6 +216,7 @@ int main(int argc, char* argv[])
     return EXIT_FAILURE;
   }
 
+  #ifdef MAKE_FRAMES
   // We know the framerate, so convert the duration into a number of frames
   int frames = static_cast<int>(duration * kFrameRate + 0.5);
 
@@ -309,6 +312,7 @@ int main(int argc, char* argv[])
 
     std::cout << "Wrote frame " << i+1 << " of " << frames << std::endl;
   }
+  #endif
 
   //std::stringstream ss;
   //ss << "ffmpeg -y" 
@@ -316,9 +320,13 @@ int main(int argc, char* argv[])
   //  << " -r " << kFrameRate 
   //  << " -c:v libx264"
   //  << " -pix_fmt yuv420p"
+  //  << " -tune film"
+  //  << " -crf 18"
   //  << " out.mp4"
   //  << std::endl;
-  //int rc = system(ss.str().c_str());
+  //ExecuteCommand(ss.str());
+
+  ExecuteCommand("ffmpeg -y -i out.mp4 -i output.wav -c:v copy final.mp4");
 
   return EXIT_SUCCESS;
 }
