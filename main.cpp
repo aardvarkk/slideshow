@@ -18,7 +18,7 @@ static const int    kOutputW = 1920;
 static const int    kOutputH = 1080;
 static const int    kMaxOutputDim = std::max(kOutputW, kOutputH);
 static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
-static const double kMinScale = 0.9;
+static const double kMinScale = 0.8;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
 
 static std::tr1::mt19937 eng_;
@@ -44,7 +44,8 @@ Strings GetFilenames(std::string const& dir, std::string const& ext)
 
   #ifdef _WIN32
   WIN32_FIND_DATA find_data;
-  HANDLE h = FindFirstFile(std::string(dir + "\\*." + ext).c_str(), &find_data);
+  std::string search = dir + "\\*." + ext;
+  HANDLE h = FindFirstFile(search.c_str(), &find_data);
   if (h != INVALID_HANDLE_VALUE) {
     filenames.push_back(dir + "\\" + find_data.cFileName);
     while (FindNextFile(h, &find_data)) {
@@ -242,7 +243,7 @@ int main(int argc, char* argv[])
 
       // This image is invisible
       // Not visible (either future or past), so clear it!
-      if (cur_pos >= kMaxOutputDim || cur_pos + layout[j].dim < 0) {
+      if (cur_pos >= kMaxOutputDim || cur_pos + layout[j].dim - 1 < 0) {
         layout[j].img = cv::Mat();
       } else {
 
@@ -263,16 +264,11 @@ int main(int argc, char* argv[])
           }
         }
 
-        int start_comp_px   = std::max(cur_pos, 0);
-        int end_comp_px     = std::min(cur_pos + layout[j].dim - 1, kMaxOutputDim-1);
-        int start_layout_px = std::max(0, cur_pos - layout[j].pos);
-        int end_layout_px   = start_layout_px + (end_comp_px - start_comp_px);
-        
         // Interpolate the cropping area
         cv::Rect_<double> src_r = LinearInterpRect(
           layout[j].start_r, 
           layout[j].end_r,
-          1 - static_cast<double>(end_layout_px - start_layout_px + 1) / kMaxOutputDim
+          static_cast<double>(kMaxOutputDim - cur_pos) / (kMaxOutputDim + layout[j].dim)
           );
 
         cv::Mat cropped = layout[j].img(src_r);
@@ -286,9 +282,25 @@ int main(int argc, char* argv[])
         }
         cv::resize(cropped, cropped, target);
 
-        std::cout << "Cropping an image of dimension " << cropped.cols << "x" << cropped.rows << " at (" << start_layout_px << ", " << 0 << ", " << end_layout_px - start_layout_px + 1 << ", " << kOutputH - 1 << ")" << std::endl;
-        cropped(cv::Rect(start_layout_px, 0, end_layout_px - start_layout_px + 1, kOutputH - 1)).copyTo(
-          comp(cv::Rect(start_comp_px, 0, end_comp_px - start_comp_px + 1, kOutputH - 1)));
+        //if (j == 1) {
+        //  WriteFrame(cropped, i);
+        //}
+
+        int comp_px_s = std::max(cur_pos, 0);
+        int comp_px_e = std::min(cur_pos + layout[j].dim - 1, kMaxOutputDim-1);
+        int comp_px_w = comp_px_e - comp_px_s + 1;
+
+        int crop_px_s;
+        if (cur_pos >= 0) {
+          crop_px_s = 0;
+        } else {
+          crop_px_s = -cur_pos;
+        }
+        int crop_px_w = std::min(comp_px_w, layout[j].dim);
+
+        std::cout << "Cropping an image of dimension " << cropped.cols << "x" << cropped.rows << " at (" << crop_px_s << ", " << 0 << ", " << crop_px_w << ", " << kOutputH - 1 << ")" << std::endl;
+        cropped(cv::Rect(crop_px_s, 0, crop_px_w, kOutputH - 1)).copyTo(
+          comp(cv::Rect(comp_px_s, 0, comp_px_w, kOutputH - 1)));
       }
     }
 
