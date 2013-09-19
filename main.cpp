@@ -21,7 +21,7 @@ static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
 static const double kMinScale = 0.8;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
 
-//#define MAKE_FRAMES
+#define MAKE_FRAMES
 
 static std::tr1::mt19937 eng_;
 
