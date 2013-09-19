@@ -16,6 +16,8 @@ static const double kTransitionPerc = 0.2; // This is a fraction of entire secon
 static const char*  kFormat = "frames/%08d.png";
 static const int    kOutputW = 1920;
 static const int    kOutputH = 1080;
+static const int    kMaxOutputDim = std::max(kOutputW, kOutputH);
+static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
 static const double kMinScale = 0.9;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
 
@@ -23,6 +25,16 @@ static std::tr1::mt19937 eng_;
 
 typedef std::vector<std::string> Strings;
 typedef std::vector<cv::Mat>     Images;
+
+struct LayoutEntry
+{
+  std::string path;
+  cv::Mat img;
+  int dim;
+  int pos;
+};
+
+typedef std::deque<LayoutEntry> Layout;
 
 Strings GetFilenames(std::string const& dir, std::string const& ext)
 {
@@ -137,42 +149,49 @@ cv::Rect LinearInterpRect(cv::Rect const& start, cv::Rect const& end, int frame,
   return ret;
 }
 
-// For a bad image, no fading occurs -- just sliding
-void BadImage(cv::Mat const& prv, cv::Mat const& cur, int to_use, int transition_frames, int* frame) 
+Layout GetLayout(Strings const& pictures, int output_w, int output_h)
 {
-  // Pick a start & end box of the "bad" aspect on the image
-  cv::Rect start_r = RandRect(cur, static_cast<double>(kOutputH) / kOutputW, std::min(cur.rows, cur.cols) * kMinScale);
-  cv::Rect end_r   = RandRect(cur, static_cast<double>(kOutputH) / kOutputW, std::min(cur.rows, cur.cols) * kMinScale);
+  Layout layout;
 
-  // Required space after slide
-  int required_px = static_cast<int>(std::min(kOutputW, kOutputH) / kAspect);
+  int prv_pos = 0;
 
-  // An output frame
-  cv::Mat comp = cv::Mat(kOutputW, kOutputH, CV_8UC3);
+  // Add a starting image
+  LayoutEntry start;
+  start.dim = std::max(output_w, output_h);
+  start.pos = prv_pos;
+  prv_pos += start.dim;
+  layout.push_back(start);
 
-  // How many frames we've used so far
-  int used = 0;
+  for (size_t i = 0; i < pictures.size(); ++i) {
+    cv::Mat img = cv::imread(pictures[i]);
 
-  // Slide in
-  for (; used < transition_frames; ++used) {
-    int trans_loc = kOutputW - required_px * used / transition_frames;
-    cv::Rect crop = LinearInterpRect(start_r, end_r, used, to_use);
+    // Scale the image so that its min dimension is equal to
+    double scale = static_cast<double>(kMinOutputDim) / std::max(img.rows, img.cols);
+    cv::resize(img, img, cv::Size(), scale, scale);
 
-    prv.copy
+    LayoutEntry entry;
+    entry.dim = output_w > output_h ? img.cols : img.rows;
+    entry.pos = prv_pos;
+    entry.path = pictures[i];
+    prv_pos += entry.dim;
+    layout.push_back(entry);
 
-    WriteFrame(comp, *frame++);
+    std::cout << "Added " << pictures[i] << " to layout" << std::endl;
   }
 
-  // Stay solid
-  for (; used < to_use; ++used) {
-    WriteFrame(comp, *frame++);
-  }
+  // Add an ending image
+  LayoutEntry end;
+  end.dim = start.dim;
+  end.pos = prv_pos;
+  layout.push_back(end);
+
+  return layout;
 }
 
 int main(int argc, char* argv[])
 {
   // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
-  Strings pictures = GetFilenames("pictures", "jpg");
+  Strings pictures = GetFilenames("pictures_quick", "jpg");
   Strings songs    = GetFilenames("music", "mp3");
   
   // Stitch the music together into a WAV file (to help determine actual length)
@@ -188,71 +207,64 @@ int main(int argc, char* argv[])
 
   // We know the framerate, so convert the duration into a number of frames
   int frames = static_cast<int>(duration * kFrameRate + 0.5);
-  double seconds_per_pic = duration / pictures.size();
-  double transition_seconds = seconds_per_pic * kTransitionPerc;
-  int transition_frames = static_cast<int>(transition_seconds * kFrameRate + 0.5);
 
-  // We need to save some frames at the end for a fadeout
-  // Otherwise, every image is just a transition in, and then the image itself
-  frames -= transition_frames;
+  // Find out how much space is required for each image
+  Layout layout = GetLayout(pictures, kOutputW, kOutputH);
 
-  // Get a black image of the correct size
-  cv::Mat black(kOutputH, kOutputW, CV_8UC3);
-  black.setTo(0);
+  // Find out how many pixels we need to move by the last frame
+  int total_px = 0;
+  for (size_t i = 0; i < layout.size(); ++i) {
+    total_px += layout[i].dim;
+  }
+  // We only need to slide this many pixels through the show
+  int slide_px = total_px - 2 * std::max(kOutputW, kOutputH);
 
-  // Start out saying our previous image is just black
-  cv::Mat prv = black;
+  // Our composite (output) frame
+  cv::Mat comp(kOutputH, kOutputW, CV_8UC3);
+  comp.setTo(0);
 
-  // Start dealing with each picture
-  int frame = 0;
-  for (size_t i = 0; i < pictures.size(); ++i) {
-    cv::Mat cur = cv::imread(pictures[i]);
-    double aspect1 = static_cast<double>(cur.cols) / cur.rows;
-    double aspect2 = static_cast<double>(cur.rows) / cur.cols;
+  // Go through the frames
+  for (int i = 0; i < frames; ++i) {
+    int slid = i * slide_px / frames;
 
-    // Good image if our aspect is similar to the output aspect
-    bool good = (aspect1 > 1) == (kAspect > 1);
+    // Go through the layout... if the image is visible, load it
+    // If it's no longer visible, unload it
+    for (size_t j = 0; j < layout.size(); ++j) {
+      int cur_pos = layout[j].pos - slid;
 
-    // How many frames will we give this image?
-    size_t start_frame = i * frames / pictures.size();
-    size_t end_frame   = (i+1) * frames / pictures.size() - 1;
+      // This image is invisible
+      // Not visible (either future or past), so clear it!
+      if (cur_pos >= kMaxOutputDim || cur_pos + layout[j].dim < 0) {
+        layout[j].img = cv::Mat();
+      } else {
 
-    if (good) {
-    } else {
-      BadImage(prv, cur, end_frame - start_frame + 1, transition_frames, &frame);
+        // We haven't already loaded it...
+        if (layout[j].img.empty()) {
+          // An endcap image...
+          if (layout[j].path.empty()) {
+            layout[j].img = cv::Mat(kOutputH, kOutputW, CV_8UC3);
+            layout[j].img.setTo(0);
+          } 
+          // A normal image
+          else {
+            layout[j].img = cv::imread(layout[j].path);
+          }
+        }
+
+        int start_comp_px   = std::max(cur_pos, 0);
+        int end_comp_px     = std::min(cur_pos + layout[j].dim - 1, kMaxOutputDim-1);
+        int start_layout_px = std::max(0, cur_pos - layout[j].pos);
+        int end_layout_px   = start_layout_px + (end_comp_px - start_comp_px);
+        
+        layout[j].img(cv::Rect(start_layout_px, 0, end_layout_px - start_layout_px + 1, kOutputH - 1)).copyTo(
+          comp(cv::Rect(start_comp_px, 0, end_comp_px - start_comp_px + 1, kOutputH - 1)));
+      }
     }
+
+    // Write it out
+    WriteFrame(comp, i);
   }
 
-  // Do the first fade up
-  //int frame = 0;
-  //cv::Mat first = cv::imread(pictures.front());
-  //for (; frame < transition_frames; ++frame) {
-  //  double alpha = static_cast<double>(frame) / transition_frames;
-  //  WriteFrame(
-  //    alpha * first(cv::Rect(0, 0, kOutputW, kOutputH)) + (1-alpha) * black,
-  //    frame
-  //    );
-  //}
-
-  //// Go through all frames
-  //for (int i = 0; i < frames; ++i) {
-  //  double cur_time = static_cast<double>(i) / frames * duration;
-
-  //  static int prev_image_idx = 0;
-  //  int image_idx = i * pictures.size() / frames;
-
-  //  // We're starting a transition
-  //  if (image_idx != prev_image_idx) {
-  //  }
-
-  //}
-
-  //Images images(pictures.size());
-  //for (size_t i = 1; i < pictures.size(); ++i) {
-  //  images[i] = cv::imread(pictures[i]);
-
-  //}
-    
   //std::stringstream ss;
   //ss << "ffmpeg -y" 
   //  << " -i " << kFormat
