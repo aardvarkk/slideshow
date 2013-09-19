@@ -117,28 +117,29 @@ void WriteFrame(cv::Mat const& img, int num)
   );
 }
 
-cv::Rect RandRect(cv::Mat const& img, int max_w, int max_h, int min_dim)
+cv::Rect_<double> RandRect(cv::Mat const& img, int output_w, int output_h, double min_scale)
 {
-  int x, y, w, h;
+  double x, y, w, h;
   bool valid = false;
 
+  double min_dim = min_scale * std::min(img.rows, img.cols);
   std::tr1::uniform_real<> min_d(min_dim, std::min(img.rows, img.cols) - 1);
     
-  if (max_w > max_h) {
+  if (kOutputW > kOutputH) {
     h = min_d(eng_);
-    w = h * max_h / max_w;
+    w = h * img.cols / img.rows;
   } else {
     w = min_d(eng_);
-    h = w * max_w / max_h;
+    h = w * img.rows / img.cols;
   }
 
-  std::tr1::uniform_int<> rnd_x(0, img.cols - w);
+  std::tr1::uniform_real<> rnd_x(0, img.cols - w);
   x = rnd_x(eng_);
 
-  std::tr1::uniform_int<> rnd_y(0, img.rows - h);
+  std::tr1::uniform_real<> rnd_y(0, img.rows - h);
   y = rnd_y(eng_);
 
-  return cv::Rect(x, y, w, h);
+  return cv::Rect_<double>(x, y, w, h);
 }
 
 cv::Rect_<double> LinearInterpRect(cv::Rect const& start, cv::Rect const& end, double alpha)
@@ -167,8 +168,13 @@ Layout GetLayout(Strings const& pictures, int output_w, int output_h)
   for (size_t i = 0; i < pictures.size(); ++i) {
     cv::Mat img = cv::imread(pictures[i]);
 
-    // Scale the image so that its min dimension is equal to
-    double scale = static_cast<double>(kMinOutputDim) / std::max(img.rows, img.cols);
+    // Scale the image so that its fits on the sliding timeline
+    double scale = 0;
+    if (output_w > output_h) {
+      scale = static_cast<double>(kOutputH) / img.rows;
+    } else {
+      scale = static_cast<double>(kOutputW) / img.cols;
+    }
     cv::resize(img, img, cv::Size(), scale, scale);
 
     LayoutEntry entry;
@@ -219,7 +225,7 @@ int main(int argc, char* argv[])
     total_px += layout[i].dim;
   }
   // We only need to slide this many pixels through the show
-  int slide_px = total_px - 2 * std::max(kOutputW, kOutputH);
+  int slide_px = total_px - std::max(kOutputW, kOutputH);
 
   // Our composite (output) frame
   cv::Mat comp(kOutputH, kOutputW, CV_8UC3);
@@ -227,7 +233,7 @@ int main(int argc, char* argv[])
 
   // Go through the frames
   for (int i = 0; i < frames; ++i) {
-    int slid = i * slide_px / frames;
+    int slid = i * slide_px / (frames-1);
 
     // Go through the layout... if the image is visible, load it
     // If it's no longer visible, unload it
@@ -252,8 +258,8 @@ int main(int argc, char* argv[])
           // A normal image
           else {
             layout[j].img = cv::imread(layout[j].path);
-            layout[j].start_r = RandRect(layout[j].img, layout[j].img.rows, layout[j].img.cols, static_cast<int>(std::min(layout[j].img.rows, layout[j].img.cols) * kMinScale));
-            layout[j].end_r = RandRect(layout[j].img, layout[j].img.rows, layout[j].img.cols, static_cast<int>(std::min(layout[j].img.rows, layout[j].img.cols) * kMinScale));
+            layout[j].start_r = RandRect(layout[j].img, kOutputW, kOutputH, kMinScale);
+            layout[j].end_r = RandRect(layout[j].img, kOutputW, kOutputH, kMinScale);
           }
         }
 
@@ -270,8 +276,15 @@ int main(int argc, char* argv[])
           );
 
         cv::Mat cropped = layout[j].img(src_r);
-        double scale = kOutputW > kOutputH ? static_cast<double>(kOutputH) / cropped.rows : 0;
-        cv::resize(cropped, cropped, cv::Size(), scale, scale);
+        cv::Size target;
+        if (kOutputW > kOutputH) {
+          target.width = layout[j].dim;
+          target.height = kOutputH;
+        } else {
+          target.height = layout[j].dim;
+          target.width = kOutputW;
+        }
+        cv::resize(cropped, cropped, target);
 
         std::cout << "Cropping an image of dimension " << cropped.cols << "x" << cropped.rows << " at (" << start_layout_px << ", " << 0 << ", " << end_layout_px - start_layout_px + 1 << ", " << kOutputH - 1 << ")" << std::endl;
         cropped(cv::Rect(start_layout_px, 0, end_layout_px - start_layout_px + 1, kOutputH - 1)).copyTo(
