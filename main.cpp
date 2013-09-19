@@ -314,17 +314,17 @@ int main(int argc, char* argv[])
   }
   #endif
 
-  //std::stringstream ss;
-  //ss << "ffmpeg -y" 
-  //  << " -i " << kFormat
-  //  << " -r " << kFrameRate 
-  //  << " -c:v libx264"
-  //  << " -pix_fmt yuv420p"
-  //  << " -tune film"
-  //  << " -crf 18"
-  //  << " out.mp4"
-  //  << std::endl;
-  //ExecuteCommand(ss.str());
+  std::stringstream ss;
+  ss << "ffmpeg -y" 
+    << " -i " << kFormat
+    << " -r " << kFrameRate 
+    << " -c:v libx264"
+    << " -pix_fmt yuv420p"
+    << " -tune film"
+    << " -crf 18"
+    << " out.mp4"
+    << std::endl;
+  ExecuteCommand(ss.str());
 
   ExecuteCommand("ffmpeg -y -i out.mp4 -i output.wav -c:v copy final.mp4");
 
