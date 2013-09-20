@@ -120,7 +120,7 @@ void WriteFrame(cv::Mat const& img, int num)
   );
 }
 
-cv::Rect_<double> RandRect(cv::Mat const& img, int output_w, int output_h, double min_scale)
+cv::Rect_<double> RandRect(cv::Mat const& img, double min_scale)
 {
   double x, y, w, h;
   bool valid = false;
@@ -128,7 +128,7 @@ cv::Rect_<double> RandRect(cv::Mat const& img, int output_w, int output_h, doubl
   double min_dim = min_scale * std::min(img.rows, img.cols);
   std::tr1::uniform_real<> min_d(min_dim, std::min(img.rows, img.cols) - 1);
     
-  if (kOutputW > kOutputH) {
+  if (img.cols > img.rows) {
     h = min_d(eng_);
     w = h * img.cols / img.rows;
   } else {
@@ -202,8 +202,8 @@ Layout GetLayout(Strings const& pictures, int output_w, int output_h)
 int main(int argc, char* argv[])
 {
   // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
-  Strings pictures = GetFilenames("pictures", "jpg");
-  Strings songs    = GetFilenames("music", "mp3");
+  Strings pictures = GetFilenames("pictures_quick", "jpg");
+  Strings songs    = GetFilenames("music_quick", "mp3");
   
   // Stitch the music together into a WAV file (to help determine actual length)
   ConcatenateMusic(songs);
@@ -262,8 +262,8 @@ int main(int argc, char* argv[])
           // A normal image
           else {
             layout[j].img = cv::imread(layout[j].path);
-            layout[j].start_r = RandRect(layout[j].img, kOutputW, kOutputH, kMinScale);
-            layout[j].end_r = RandRect(layout[j].img, kOutputW, kOutputH, kMinScale);
+            layout[j].start_r = RandRect(layout[j].img, kMinScale);
+            layout[j].end_r = RandRect(layout[j].img, kMinScale);
           }
         }
 
