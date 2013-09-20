@@ -11,14 +11,14 @@
 
 #include <opencv2/opencv.hpp>
 
-static const int    kFrameRate = 24;
+static const int    kFrameRate = 30;
 static const double kTransitionPerc = 0.2; // This is a fraction of entire seconds per picture, so at 0.1, transition will take 10% of full picture time on each side
 static const char*  kFormat = "frames/%08d.png";
 static const int    kOutputW = 1920;
 static const int    kOutputH = 1080;
 static const int    kMaxOutputDim = std::max(kOutputW, kOutputH);
 static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
-static const double kMinScale = 0.8;
+static const double kMinScale = 0.95;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
 
 #define MAKE_FRAMES
@@ -202,8 +202,8 @@ Layout GetLayout(Strings const& pictures, int output_w, int output_h)
 int main(int argc, char* argv[])
 {
   // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
-  Strings pictures = GetFilenames("pictures_quick", "jpg");
-  Strings songs    = GetFilenames("music_quick", "mp3");
+  Strings pictures = GetFilenames("pictures", "jpg");
+  Strings songs    = GetFilenames("music", "mp3");
   
   // Stitch the music together into a WAV file (to help determine actual length)
   ConcatenateMusic(songs);
