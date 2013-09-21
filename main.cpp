@@ -1,3 +1,4 @@
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -11,15 +12,16 @@
 
 #include <opencv2/opencv.hpp>
 
-static const int    kFrameRate = 30;
+static const int    kFrameRate = 25;
 static const double kTransitionPerc = 0.2; // This is a fraction of entire seconds per picture, so at 0.1, transition will take 10% of full picture time on each side
 static const char*  kFormat = "frames/%08d.png";
 static const int    kOutputW = 1920;
 static const int    kOutputH = 1080;
 static const int    kMaxOutputDim = std::max(kOutputW, kOutputH);
 static const int    kMinOutputDim = std::min(kOutputW, kOutputH);
-static const double kMinScale = 0.95;
+static const double kMinScale = 0.9;
 static const double kAspect = static_cast<double>(kOutputW) / kOutputH;
+static const double kSpeedMax = 250;
 
 #define MAKE_FRAMES
 
@@ -202,8 +204,8 @@ Layout GetLayout(Strings const& pictures, int output_w, int output_h)
 int main(int argc, char* argv[])
 {
   // NOTE: No spaces allowed in paths, because that's what FFMPEG demands!
-  Strings pictures = GetFilenames("pictures_quick", "jpg");
-  Strings songs    = GetFilenames("music_quick", "mp3");
+  Strings pictures = GetFilenames("pictures", "jpg");
+  Strings songs    = GetFilenames("music", "mp3");
   
   // Stitch the music together into a WAV file (to help determine actual length)
   ConcatenateMusic(songs);
@@ -231,13 +233,19 @@ int main(int argc, char* argv[])
   // We only need to slide this many pixels through the show
   int slide_px = total_px - std::max(kOutputW, kOutputH);
 
+  double px_per_s = static_cast<double>(slide_px) / duration;
+  if (px_per_s > kSpeedMax) {
+    std::cerr << "ERROR: Given music length, images move at " << px_per_s << " pixels per second which exceeds threshold of " << kSpeedMax << std::endl;
+    return EXIT_FAILURE;
+  }
+
   // Our composite (output) frame
   cv::Mat comp(kOutputH, kOutputW, CV_8UC3);
   comp.setTo(0);
 
   // Go through the frames
-  for (int i = 0; i < frames; ++i) {
-    int slid = i * slide_px / (frames-1);
+  for (int i = 15000; i < frames; ++i) {
+    int slid = static_cast<int64_t>(i) * slide_px / (frames-1);
 
     // Go through the layout... if the image is visible, load it
     // If it's no longer visible, unload it
@@ -309,7 +317,6 @@ int main(int argc, char* argv[])
 
     // Write it out
     WriteFrame(comp, i);
-
     std::cout << "Wrote frame " << i+1 << " of " << frames << std::endl;
   }
   #endif
@@ -317,7 +324,7 @@ int main(int argc, char* argv[])
   std::stringstream ss;
   ss << "ffmpeg -y" 
     << " -i " << kFormat
-    << " -r " << kFrameRate 
+    // FFMPEG seems to ignore this as input framerate, so stick to its native 25 << " -r " << kFrameRate 
     << " -c:v libx264"
     << " -pix_fmt yuv420p"
     << " -tune film"
