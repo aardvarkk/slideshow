@@ -244,7 +244,7 @@ int main(int argc, char* argv[])
   comp.setTo(0);
 
   // Go through the frames
-  for (int i = 15000; i < frames; ++i) {
+  for (int i = 0; i < frames; ++i) {
     int slid = static_cast<int64_t>(i) * slide_px / (frames-1);
 
     // Go through the layout... if the image is visible, load it
